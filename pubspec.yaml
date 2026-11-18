@@ -1,0 +1,53 @@
+name: e_commerce_shopping_app
+description: "PulseCart - Flutter E-Commerce Shopping Application (Task 5 - Advanced)."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Icons
+  cupertino_icons: ^1.0.8
+  cached_network_image: ^3.4.1
+  shimmer: ^3.0.0
+  google_fonts: ^6.2.1
+
+  # State Management & Value Equality
+  flutter_bloc: ^9.1.0
+  equatable: ^2.0.7
+
+  # Firebase & Authentication
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.1
+  google_sign_in: ^6.2.2
+  cloud_firestore: ^5.6.5
+
+  # Networking (FakeStore REST API)
+  dio: ^5.8.0+1
+
+  # Local Offline Persistence (Hive NoSQL)
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Utilities
+  intl: ^0.20.2
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Testing
+  bloc_test: ^10.0.0
+  mocktail: ^1.0.4
+
+  # Linting
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

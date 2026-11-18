@@ -1,0 +1,303 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model (PulseCart Flutter E-Commerce App)
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId} (must match Firebase Auth UID)
+// Fields:
+//   - uid: string (required, immutable, must equal {userId} and request.auth.uid)
+//   - name: string (required, 1..120 chars) - User display name
+//   - email: string (required, 1..254 chars, valid email format) - User email (PII)
+//   - photoUrl: string | null (optional, null or empty or http(s) URL <= 1000 chars)
+//   - favoriteCategories: map<string, int> (optional, max 50 keys) - Category affinity map
+//   - createdAt: timestamp (optional, immutable once set) - Account profile creation time
+//   - updatedAt: timestamp (optional) - Last profile or affinity update time
+// Access: Strictly owner-only read, create, and update (supports SetOptions(merge: true)).
+//         Delete is denied to prevent accidental profile/data loss.
+//
+// Subcollection: users/{userId}/cart
+// Document ID: {productId} (stringified positive integer matching data.productId)
+// Fields:
+//   - productId: int (required, immutable, 1..1000000000, string(productId) == {productId})
+//   - title: string (required, 1..300 chars) - Product title
+//   - price: number (required, 0..1000000) - Unit price
+//   - image: string (required, 0..1000 chars, empty or http(s) URL) - Product image URL
+//   - category: string (required, 1..100 chars) - Product category
+//   - quantity: int (required, 1..999) - Item quantity in cart
+//   - updatedAt: timestamp (required) - Last modification timestamp
+// Access: Strictly owner-only read, create, update, and delete.
+//         Note: Parent user doc existence is intentionally not enforced via exists()
+//         to avoid extra read costs and race conditions during offline-to-cloud login sync.
+//
+// Subcollection: users/{userId}/orders
+// Document ID: {orderId} (string, 1..128 chars, matching data.orderId)
+// Fields:
+//   - orderId: string (required, 1..128 chars, must equal {orderId})
+//   - items: list<map> (required, 1..100 elements, non-empty list of item maps)
+//   - subtotal: number (required, 0..10000000)
+//   - shippingFee: number (required, 0..100000)
+//   - totalPrice: number (required, 0..10100000)
+//   - paymentMethod: string (required, 'Cash on Delivery' | 'Credit/Debit Card')
+//   - shippingAddress: map (required, exact keys: fullName, phone, street, city)
+//       - fullName: string (1..120 chars)
+//       - phone: string (1..30 chars)
+//       - street: string (1..250 chars)
+//       - city: string (1..100 chars)
+//   - createdAt: timestamp (required, within [request.time - 15m, request.time + 5m])
+//   - status: string (required, 'Processing' | 'Completed' on create)
+// Access: Strictly owner-only read and create.
+//         Orders are immutable once created (update and delete are denied).
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user owns the user-scoped resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Verify uid matches authenticated user on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field is not modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate required fields exist on the resulting document
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate document contains only allowed fields (prevents schema pollution & privilege escalation)
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate immutable fields have not changed on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate URL format (must start with https:// or http://)
+    function isValidUrl(url) {
+      return url is string &&
+        (url.matches('^https://.*') || url.matches('^http://.*'));
+    }
+
+    // Validate email format
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() > 0 &&
+        email.size() <= 254 &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // Validate non-empty bounded string
+    function isNonEmptyString(val, maxLen) {
+      return val is string && val.size() > 0 && val.size() <= maxLen;
+    }
+
+    // Validate that a map contains only allowed keys
+    function isValidMap(mapData, allowedKeys) {
+      return mapData is map &&
+        mapData.keys().hasAll(allowedKeys) &&
+        mapData.keys().hasOnly(allowedKeys);
+    }
+
+    // Validate timestamp is reasonably recent (supports FieldValue.serverTimestamp() and minor client clock skew)
+    function isRecentWithSkew(ts) {
+      return ts is timestamp &&
+        ts >= request.time - duration.value(15, 'm') &&
+        ts <= request.time + duration.value(5, 'm');
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update rules)
+    // ===============================================================
+
+    // Validate user profile document (users/{userId})
+    function isValidUser(data, userId) {
+      return hasOnlyAllowedFields([
+          'uid',
+          'name',
+          'email',
+          'photoUrl',
+          'favoriteCategories',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        hasRequiredFields(['uid', 'name', 'email']) &&
+        data.uid is string &&
+        data.uid == userId &&
+        isNonEmptyString(data.name, 120) &&
+        isValidEmail(data.email) &&
+        (!('photoUrl' in data) ||
+          data.photoUrl == null ||
+          (data.photoUrl is string &&
+            data.photoUrl.size() <= 1000 &&
+            (data.photoUrl == '' || isValidUrl(data.photoUrl)))) &&
+        (!('favoriteCategories' in data) ||
+          (data.favoriteCategories is map &&
+            data.favoriteCategories.size() <= 50)) &&
+        (!('createdAt' in data) || data.createdAt is timestamp) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Validate cart item document (users/{userId}/cart/{productId})
+    function isValidCartItem(data, productId) {
+      return hasOnlyAllowedFields([
+          'productId',
+          'title',
+          'price',
+          'image',
+          'category',
+          'quantity',
+          'updatedAt'
+        ]) &&
+        hasRequiredFields([
+          'productId',
+          'title',
+          'price',
+          'image',
+          'category',
+          'quantity',
+          'updatedAt'
+        ]) &&
+        data.productId is int &&
+        data.productId > 0 &&
+        data.productId <= 1000000000 &&
+        string(data.productId) == productId &&
+        isNonEmptyString(data.title, 300) &&
+        data.price is number &&
+        data.price >= 0 &&
+        data.price <= 1000000 &&
+        data.image is string &&
+        data.image.size() <= 1000 &&
+        (data.image == '' || isValidUrl(data.image)) &&
+        isNonEmptyString(data.category, 100) &&
+        data.quantity is int &&
+        data.quantity >= 1 &&
+        data.quantity <= 999 &&
+        data.updatedAt is timestamp;
+    }
+
+    // Validate shipping address map embedded in an order document
+    function isValidShippingAddress(addr) {
+      return isValidMap(addr, ['fullName', 'phone', 'street', 'city']) &&
+        isNonEmptyString(addr.fullName, 120) &&
+        isNonEmptyString(addr.phone, 30) &&
+        isNonEmptyString(addr.street, 250) &&
+        isNonEmptyString(addr.city, 100);
+    }
+
+    // Validate order document (users/{userId}/orders/{orderId})
+    function isValidOrder(data, orderId) {
+      return hasOnlyAllowedFields([
+          'orderId',
+          'items',
+          'subtotal',
+          'shippingFee',
+          'totalPrice',
+          'paymentMethod',
+          'shippingAddress',
+          'createdAt',
+          'status'
+        ]) &&
+        hasRequiredFields([
+          'orderId',
+          'items',
+          'subtotal',
+          'shippingFee',
+          'totalPrice',
+          'paymentMethod',
+          'shippingAddress',
+          'createdAt',
+          'status'
+        ]) &&
+        isNonEmptyString(data.orderId, 128) &&
+        data.orderId == orderId &&
+        data.items is list &&
+        data.items.size() >= 1 &&
+        data.items.size() <= 100 &&
+        data.items[0] is map &&
+        data.subtotal is number &&
+        data.subtotal >= 0 &&
+        data.subtotal <= 10000000 &&
+        data.shippingFee is number &&
+        data.shippingFee >= 0 &&
+        data.shippingFee <= 100000 &&
+        data.totalPrice is number &&
+        data.totalPrice >= 0 &&
+        data.totalPrice <= 10100000 &&
+        data.paymentMethod is string &&
+        data.paymentMethod in ['Cash on Delivery', 'Credit/Debit Card'] &&
+        isValidShippingAddress(data.shippingAddress) &&
+        isRecentWithSkew(data.createdAt) &&
+        data.status is string &&
+        data.status in ['Processing', 'Completed'];
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // User profile & category affinity document (contains PII: email)
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+        uidUnchanged() &&
+        isValidUser(request.resource.data, userId);
+      allow update: if isOwner(userId) &&
+        uidNotModified() &&
+        (!('createdAt' in resource.data) ||
+          request.resource.data.createdAt == resource.data.createdAt) &&
+        isValidUser(request.resource.data, userId);
+      allow delete: if false;
+
+      // Cloud cart subcollection
+      match /cart/{productId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+          isValidCartItem(request.resource.data, productId);
+        allow update: if isOwner(userId) &&
+          areImmutableFieldsUnchanged(['productId']) &&
+          isValidCartItem(request.resource.data, productId);
+        allow delete: if isOwner(userId);
+      }
+
+      // Immutable orders subcollection (contains PII: shippingAddress)
+      match /orders/{orderId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+          isValidOrder(request.resource.data, orderId);
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
