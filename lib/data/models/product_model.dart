@@ -1,6 +1,6 @@
 import 'package:e_commerce_shopping_app/domain/entities/product_entity.dart';
 
-/// Data model for FakeStore REST API products and Hive local catalog cache.
+/// Data model for catalog REST API products and Hive local catalog cache.
 class ProductModel extends ProductEntity {
   const ProductModel({
     required super.id,
@@ -13,6 +13,19 @@ class ProductModel extends ProductEntity {
     required super.ratingCount,
   });
 
+  /// Normalizes `cdn.dummyjson.com` `.webp` URLs (which send `no-store` headers
+  /// that cause 0-byte cache corruption on Android) into cache-safe JPEG URLs.
+  static String normalizeImageUrl(String rawUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.contains('cdn.dummyjson.com') &&
+        !trimmed.startsWith('https://wsrv.nl/')) {
+      final encoded = Uri.encodeComponent(trimmed);
+      return 'https://wsrv.nl/?url=$encoded&output=jpg&w=500&bg=ffffff';
+    }
+    return trimmed;
+  }
+
   factory ProductModel.fromEntity(ProductEntity entity) {
     return ProductModel(
       id: entity.id,
@@ -20,7 +33,7 @@ class ProductModel extends ProductEntity {
       price: entity.price,
       description: entity.description,
       category: entity.category,
-      image: entity.image,
+      image: normalizeImageUrl(entity.image),
       ratingRate: entity.ratingRate,
       ratingCount: entity.ratingCount,
     );
@@ -46,7 +59,7 @@ class ProductModel extends ProductEntity {
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       description: (json['description'] ?? '').toString(),
       category: (json['category'] ?? '').toString(),
-      image: (json['image'] ?? '').toString(),
+      image: normalizeImageUrl((json['image'] ?? '').toString()),
       ratingRate: rate,
       ratingCount: count,
     );

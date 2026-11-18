@@ -3,6 +3,7 @@ import 'package:e_commerce_shopping_app/core/errors/failures.dart';
 import 'package:e_commerce_shopping_app/data/datasources/mock_catalog_data.dart';
 import 'package:e_commerce_shopping_app/data/datasources/product_local_datasource.dart';
 import 'package:e_commerce_shopping_app/data/datasources/product_remote_datasource.dart';
+import 'package:e_commerce_shopping_app/data/models/product_model.dart';
 import 'package:e_commerce_shopping_app/domain/entities/product_entity.dart';
 import 'package:e_commerce_shopping_app/domain/repositories/product_repository.dart';
 
@@ -92,12 +93,15 @@ class ProductRepositoryImpl implements ProductRepository {
       // Cache empty on first offline boot — fall through to bundled catalog.
     }
 
+    final normalizedFallback = MockCatalogData.fallbackProducts
+        .map(ProductModel.fromEntity)
+        .toList();
     try {
-      await _localDataSource.cacheProducts(MockCatalogData.fallbackProducts);
+      await _localDataSource.cacheProducts(normalizedFallback);
     } catch (_) {
       // Ignore cache seed error.
     }
-    return MockCatalogData.fallbackProducts;
+    return normalizedFallback;
   }
 
   Future<ProductEntity> _fallbackSingleProduct(

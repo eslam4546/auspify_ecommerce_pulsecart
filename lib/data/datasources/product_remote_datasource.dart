@@ -200,7 +200,7 @@ class ProductRemoteDataSourceImpl implements ProductRemoteDataSource {
       description: (json['description'] ?? '').toString(),
       category:
           overrideCategory ?? (json['category'] ?? 'electronics').toString(),
-      image: imageUrl,
+      image: ProductModel.normalizeImageUrl(imageUrl),
       ratingRate: ((json['rating'] as num?)?.toDouble() ?? 4.5).clamp(1.0, 5.0),
       ratingCount: ratingCount.clamp(12, 999),
     );

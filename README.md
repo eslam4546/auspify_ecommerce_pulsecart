@@ -13,6 +13,18 @@
 
 ---
 
+## App Screenshots
+
+| Home & Product Catalog | Search & Advanced Filter | Product Details | Specs & Similar Products |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/01_home_catalog.jpg" width="210" alt="Home & Product Catalog" /> | <img src="docs/screenshots/02_search_filter.jpg" width="210" alt="Search & Advanced Filter" /> | <img src="docs/screenshots/03_product_details.png" width="210" alt="Product Details" /> | <img src="docs/screenshots/04_similar_products.jpg" width="210" alt="Specifications & Similar Products" /> |
+
+| Hybrid Shopping Cart | Simulated Checkout Sheet | Order Confirmed | Profile & Order History |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/05_shopping_cart.jpg" width="210" alt="Hybrid Shopping Cart" /> | <img src="docs/screenshots/06_checkout_sheet.png" width="210" alt="Simulated Checkout Sheet" /> | <img src="docs/screenshots/07_order_confirmed.png" width="210" alt="Order Confirmed Dialog" /> | <img src="docs/screenshots/08_profile_orders.jpg" width="210" alt="User Profile & Order History" /> |
+
+---
+
 ## Key Features
 
 ### 1. Authentication & Session Routing (`Firebase Auth` + `Google Sign-In`)

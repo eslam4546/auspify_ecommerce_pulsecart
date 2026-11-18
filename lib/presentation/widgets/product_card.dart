@@ -84,15 +84,7 @@ class _ProductCardState extends State<ProductCard> {
                   ),
                   child: Hero(
                     tag: 'product-image-${widget.product.id}',
-                    child: CachedNetworkImage(
-                      imageUrl: widget.product.image,
-                      fit: BoxFit.contain,
-                      placeholder: (_, _) => const _ImageShimmerPlaceholder(),
-                      errorWidget: (_, _, _) => Icon(
-                        Icons.image_not_supported_outlined,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                    child: _SafeProductImage(imageUrl: widget.product.image),
                   ),
                 ),
               ),
@@ -282,15 +274,7 @@ class _RecommendedProductCardState extends State<RecommendedProductCard> {
                             : AppColors.lightSurfaceLow,
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: CachedNetworkImage(
-                        imageUrl: widget.product.image,
-                        fit: BoxFit.contain,
-                        placeholder: (_, _) => const _ImageShimmerPlaceholder(),
-                        errorWidget: (_, _, _) => Icon(
-                          Icons.image_not_supported_outlined,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                      child: _SafeProductImage(imageUrl: widget.product.image),
                     ),
                     Positioned(
                       top: 8,
@@ -439,6 +423,38 @@ class ProductGridShimmer extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SafeProductImage extends StatelessWidget {
+  final String imageUrl;
+
+  const _SafeProductImage({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (imageUrl.isEmpty) {
+      return Icon(
+        Icons.image_not_supported_outlined,
+        color: colorScheme.onSurfaceVariant,
+      );
+    }
+
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
+      fit: BoxFit.contain,
+      httpHeaders: const {'Accept': 'image/jpeg,image/png,image/*,*/*'},
+      placeholder: (_, _) => const _ImageShimmerPlaceholder(),
+      errorWidget: (_, _, _) => Image.network(
+        imageUrl,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => Icon(
+          Icons.image_not_supported_outlined,
+          color: colorScheme.onSurfaceVariant,
         ),
       ),
     );

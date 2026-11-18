@@ -76,7 +76,7 @@ class CartItemModel extends CartItemEntity {
         price: (map['price'] as num?)?.toDouble() ?? 0.0,
         description: (map['description'] ?? '').toString(),
         category: (map['category'] ?? '').toString(),
-        image: (map['image'] ?? '').toString(),
+        image: ProductModel.normalizeImageUrl((map['image'] ?? '').toString()),
         ratingRate: (map['ratingRate'] as num?)?.toDouble() ?? 0.0,
         ratingCount: (map['ratingCount'] as num?)?.toInt() ?? 0,
       ),
